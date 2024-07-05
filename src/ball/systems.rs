@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier2d::{
     dynamics::{Ccd, Damping, GravityScale, RigidBody},
-    geometry::{Collider, ColliderMassProperties},
+    geometry::Collider,
 };
 
 use super::components::Ball;
@@ -27,7 +27,6 @@ pub fn spawn_ball(mut commands: Commands, asset_server: Res<AssetServer>) {
         ball_sprite_bundle,
         rigid_body,
         Collider::ball(BALL_SIZE / 2.0),
-        ColliderMassProperties::Density(0.3),
         GravityScale(0.0),
         Damping {
             linear_damping: 1.0,
