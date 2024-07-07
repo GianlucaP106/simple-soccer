@@ -91,21 +91,31 @@ pub fn player_movement(
 }
 
 pub fn control_ball(
-    ball_query: Query<Entity, With<Ball>>,
-    players_query: Query<(Entity, &KinematicCharacterControllerOutput, &Player)>,
+    mut ball_query: Query<(Entity, &mut Transform), With<Ball>>,
+    mut players_query: Query<(
+        Entity,
+        &Transform,
+        Option<&KinematicCharacterControllerOutput>,
+        &mut Player,
+    )>,
 ) {
-    let ball = ball_query.get_single().unwrap();
-    for (_entity, controller_output, player) in players_query.iter() {
+    let (ball, mut ball_transform) = ball_query.get_single_mut().unwrap();
+    for (_entity, transform, controller_output, mut player) in players_query.iter_mut() {
         if player.is_holding_ball {
+            ball_transform.translation = vec3(
+                transform.translation.x + 100.0,
+                transform.translation.y,
+                transform.translation.z,
+            );
             return;
         }
 
-        let collision =
-            Some(controller_output).map(|o| o.collisions.iter().find(|c| c.entity.eq(&ball)));
-
-        if collision.is_none() {
-            continue;
-        }
+        controller_output.map(|o| {
+            o.collisions
+                .iter()
+                .find(|c| c.entity.eq(&ball))
+                .map(|_| player.is_holding_ball = true)
+        });
     }
 }
 
