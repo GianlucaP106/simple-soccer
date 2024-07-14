@@ -7,11 +7,13 @@ use bevy_rapier2d::{
 use field::FieldPlugin;
 use initialization::InititalizationPlugin;
 use player::PlayerPlugin;
+use team::TeamPlugin;
 
 mod ball;
 mod field;
 mod initialization;
 mod player;
+mod team;
 
 fn main() {
     App::new()
@@ -22,5 +24,6 @@ fn main() {
         .add_plugins(PlayerPlugin)
         .add_plugins(BallPlugin)
         .add_plugins(FieldPlugin)
+        .add_plugins(TeamPlugin)
         .run();
 }

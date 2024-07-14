@@ -1,8 +1,5 @@
-use bevy::{
-    app::{Startup, Update},
-    prelude::Plugin,
-};
-use systems::{player_movement, spawn_player};
+use bevy::{app::Update, prelude::Plugin};
+use systems::{dribble_ball, player_movement, shoot_ball};
 
 use self::systems::control_ball;
 
@@ -13,8 +10,9 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_systems(Startup, spawn_player)
-            .add_systems(Update, player_movement)
-            .add_systems(Update, control_ball);
+        app.add_systems(
+            Update,
+            (player_movement, control_ball, dribble_ball, shoot_ball),
+        );
     }
 }

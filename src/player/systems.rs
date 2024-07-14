@@ -1,141 +1,162 @@
 use bevy::{math::vec3, prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::{
     control::{KinematicCharacterController, KinematicCharacterControllerOutput},
-    dynamics::RigidBody,
+    dynamics::ExternalImpulse,
     geometry::Collider,
+    plugin::RapierContext,
 };
 
-use crate::ball::components::Ball;
+use crate::ball::components::{Ball, BALL_RADIUS};
 
-use super::components::Player;
-
-const PLAYER_WIDTH: f32 = 21.0;
-const PLAYER_HEIGHT: f32 = 31.0;
-
-pub fn spawn_player(mut commands: Commands, server: Res<AssetServer>) {
-    commands.spawn((
-        SpriteBundle {
-            transform: Transform {
-                translation: vec3(-100.0, 0.0, 1.0),
-                ..Default::default()
-            },
-            texture: server.load("characterRed.png"),
-            ..Default::default()
-        },
-        RigidBody::KinematicPositionBased,
-        Player {
-            is_holding_ball: false,
-        },
-        Collider::cuboid(PLAYER_WIDTH / 2.0, PLAYER_HEIGHT / 2.0),
-        KinematicCharacterController::default(),
-    ));
-}
+use super::components::{BallHolder, Player, SelectedPlayer};
 
 pub fn player_movement(
     input: Res<ButtonInput<KeyCode>>,
-    mut player_query: Query<(&mut KinematicCharacterController, &Transform), With<Player>>,
+    mut selected_player: Query<
+        (&mut KinematicCharacterController, &Transform, &mut Player),
+        With<SelectedPlayer>,
+    >,
     time: Res<Time>,
     window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     let window = window_query.get_single().unwrap();
-    let (mut kin, transform) = player_query.get_single_mut().unwrap();
-    let mut dir = Vec3::ZERO;
+    if let Ok((mut kin, transform, mut player)) = selected_player.get_single_mut() {
+        let mut dir = Vec3::ZERO;
 
-    if input.pressed(KeyCode::ArrowUp) {
-        dir += Vec3::new(0.0, 1.0, 0.0)
+        if input.pressed(KeyCode::ArrowUp) {
+            dir += Vec3::new(0.0, 1.0, 0.0)
+        }
+
+        if input.pressed(KeyCode::ArrowDown) {
+            dir += Vec3::new(0.0, -1.0, 0.0)
+        }
+
+        if input.pressed(KeyCode::ArrowRight) {
+            dir += Vec3::new(1.0, 0.0, 0.0)
+        }
+
+        if input.pressed(KeyCode::ArrowLeft) {
+            dir += Vec3::new(-1.0, 0.0, 0.0)
+        }
+
+        if dir.length() > 0.0 {
+            dir = dir.normalize()
+        }
+
+        let mut out_vec = dir * 200.0 * time.delta_seconds();
+
+        let half_screen_x = window.width() / 2.0;
+        let max_x = 0.0 + half_screen_x;
+        let min_x = 0.0 - half_screen_x;
+
+        let half_screen_y = window.height() / 2.0;
+        let max_y = 0.0 + half_screen_y;
+        let min_y = 0.0 - half_screen_y;
+
+        if transform.translation.x > max_x {
+            out_vec.x = out_vec.x.min(0.0);
+        }
+
+        if transform.translation.x < min_x {
+            out_vec.x = out_vec.x.max(0.0);
+        }
+
+        if transform.translation.y < min_y {
+            out_vec.y = out_vec.y.max(0.0);
+        }
+
+        if transform.translation.y > max_y {
+            out_vec.y = out_vec.y.min(0.0);
+        }
+
+        kin.translation = Some(out_vec.xy());
+        if !out_vec.xy().eq(&Vec2::ZERO) {
+            player.direction = out_vec.xy();
+        }
     }
-
-    if input.pressed(KeyCode::ArrowDown) {
-        dir += Vec3::new(0.0, -1.0, 0.0)
-    }
-
-    if input.pressed(KeyCode::ArrowRight) {
-        dir += Vec3::new(1.0, 0.0, 0.0)
-    }
-
-    if input.pressed(KeyCode::ArrowLeft) {
-        dir += Vec3::new(-1.0, 0.0, 0.0)
-    }
-
-    if dir.length() > 0.0 {
-        dir = dir.normalize()
-    }
-
-    let mut out_vec = dir * 200.0 * time.delta_seconds();
-
-    let half_screen_x = window.width() / 2.0;
-    let max_x = 0.0 + half_screen_x;
-    let min_x = 0.0 - half_screen_x;
-
-    let half_screen_y = window.height() / 2.0;
-    let max_y = 0.0 + half_screen_y;
-    let min_y = 0.0 - half_screen_y;
-
-    if transform.translation.x > max_x {
-        out_vec.x = out_vec.x.min(0.0);
-    }
-
-    if transform.translation.x < min_x {
-        out_vec.x = out_vec.x.max(0.0);
-    }
-
-    if transform.translation.y < min_y {
-        out_vec.y = out_vec.y.max(0.0);
-    }
-
-    if transform.translation.y > max_y {
-        out_vec.y = out_vec.y.min(0.0);
-    }
-
-    kin.translation = Some(out_vec.xy());
 }
 
 pub fn control_ball(
-    mut ball_query: Query<(Entity, &mut Transform), With<Ball>>,
-    mut players_query: Query<(
-        Entity,
-        &Transform,
-        Option<&KinematicCharacterControllerOutput>,
-        &mut Player,
-    )>,
+    mut commands: Commands,
+    ball_query: Query<Entity, With<Ball>>,
+    player_contact_query: Query<
+        (Option<&KinematicCharacterControllerOutput>, Entity),
+        With<Player>,
+    >,
+    existing_selected_player_query: Query<Entity, With<SelectedPlayer>>,
+    physics: Res<RapierContext>,
 ) {
-    let (ball, mut ball_transform) = ball_query.get_single_mut().unwrap();
-    for (_entity, transform, controller_output, mut player) in players_query.iter_mut() {
-        if player.is_holding_ball {
-            ball_transform.translation = vec3(
-                transform.translation.x + 100.0,
-                transform.translation.y,
-                transform.translation.z,
-            );
-            return;
+    let ball = ball_query.get_single().unwrap();
+    let op_player = player_contact_query.iter().find(|(kin, player)| {
+        if let Some(kin) = kin {
+            if kin.collisions.iter().any(|c| c.entity.eq(&ball)) {
+                return true;
+            }
         }
 
-        controller_output.map(|o| {
-            o.collisions
-                .iter()
-                .find(|c| c.entity.eq(&ball))
-                .map(|_| player.is_holding_ball = true)
-        });
+        if let Some(pair) = physics.contact_pair(ball, *player) {
+            if pair.has_any_active_contacts() {
+                return true;
+            }
+        }
+
+        false
+    });
+
+    if let Some((_, entity)) = op_player {
+        if let Ok(player) = existing_selected_player_query.get_single() {
+            commands.entity(player).remove::<SelectedPlayer>();
+        }
+        commands.entity(ball).remove::<Collider>();
+        commands
+            .entity(entity)
+            .insert(BallHolder)
+            .insert(SelectedPlayer);
     }
 }
 
-// pub fn kick_ball(
-//     _commands: Commands,
-//     ball_query: Query<Entity, With<Ball>>,
-//     character_controller_output: Query<&KinematicCharacterControllerOutput, With<Player>>,
-// ) {
-//     let ball = ball_query.get_single().unwrap();
-//     let output = character_controller_output.get_single().ok();
-//     if output.is_none() {
-//         return;
-//     }
-//
-//     let collision = output.unwrap();
-//     let collision = Some(collision)
-//         .map(|o| o.collisions.iter().find(|c| c.entity.eq(&ball)))
-//         .unwrap();
-//
-//     if let Some(c) = collision {
-//         println!("Ball collision: {}", c.translation_applied)
-//     }
-// }
+pub fn dribble_ball(
+    mut ball_query: Query<&mut Transform, With<Ball>>,
+    player_holding_ball_query: Query<(&Transform, &Player), (With<BallHolder>, Without<Ball>)>,
+) {
+    let mut ball_transform = ball_query.get_single_mut().unwrap();
+    let player_holding_ball = player_holding_ball_query.get_single();
+
+    if let Ok((transform, player)) = player_holding_ball {
+        let ball_translation = vec3(
+            transform.translation.x,
+            transform.translation.y,
+            transform.translation.z,
+        );
+
+        let dir = vec3(player.direction.x, player.direction.y, 0.0);
+        let dir = dir.mul_add(vec3(7.0, 7.0, 0.0), Vec3::ZERO);
+        ball_transform.translation = ball_translation + dir
+    }
+}
+
+pub fn shoot_ball(
+    mut commands: Commands,
+    ball_query: Query<Entity, With<Ball>>,
+    input: Res<ButtonInput<KeyCode>>,
+    player_query: Query<(&Player, Entity), (With<BallHolder>, With<SelectedPlayer>)>,
+) {
+    let ball = ball_query.get_single().unwrap();
+    let selected_player = player_query.get_single();
+
+    if let Ok((player, entity)) = selected_player {
+        if input.pressed(KeyCode::KeyX) {
+            commands
+                .entity(ball)
+                .insert(Collider::ball(BALL_RADIUS))
+                .insert(ExternalImpulse {
+                    impulse: player.direction * 100000.0,
+                    torque_impulse: 14.0,
+                });
+            commands
+                .entity(entity)
+                .remove::<BallHolder>()
+                .remove::<SelectedPlayer>();
+        }
+    }
+}
